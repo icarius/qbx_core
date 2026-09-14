@@ -1,0 +1,211 @@
+.multichar-panel {
+  position: fixed;
+  top: 8vh;
+  right: 4vw;
+  width: min(28vw, 400px);
+  max-height: 84vh;
+  background: var(--surface-1);
+  border: 0.5px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.multichar-head {
+  padding: 18px 22px;
+  border-bottom: 0.5px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.multichar-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+.multichar-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.char-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.char-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  text-align: left;
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.12s ease;
+}
+.char-slot:hover {
+  background: var(--surface-2);
+}
+.char-slot-icon {
+  font-size: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.char-slot.is-empty .char-slot-icon {
+  background: transparent;
+  border: 0.5px dashed var(--border-strong);
+}
+.char-slot-body h4 {
+  margin: 0 0 2px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.char-slot-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.char-detail,
+.char-create {
+  position: relative;
+  padding: 48px 22px 22px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.char-detail h3,
+.char-create h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.char-detail .char-detail-back {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border-radius: 50%;
+}
+.char-detail .char-detail-back:hover {
+  background: var(--border-strong);
+}
+
+.char-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.char-hero-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.char-detail .plate {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted-dim);
+  margin-top: 2px;
+}
+
+/* Grouped, not lined: a divider only between groups (money / affiliations / personal),
+   never between every single row — a divider per row reads as a harsh grid at this density. */
+.char-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 0;
+}
+.char-group:not(:first-child) {
+  border-top: 0.5px solid var(--border);
+}
+.char-info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.char-info-row span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.char-info-row strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.char-info-row.is-money strong {
+  font-size: 19px;
+}
+.char-info-row .value-muted {
+  color: var(--muted-dim);
+  font-weight: 400;
+}
+
+.char-detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+.char-detail-actions > * {
+  flex: 1;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: 12.5px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.char-create label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.char-create select {
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 0.5px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.char-create-error {
+  margin: 0 0 14px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12px;
+}

@@ -59,8 +59,12 @@ files {
     'bridge/qb/shared/export-function.lua',
     'config/client.lua',
     'config/shared.lua',
-    'locales/*.json'
+    'locales/*.json',
+    'web/build/index.html',
+    'web/build/**/*',
 }
+
+ui_page 'web/build/index.html'
 
 dependencies {
     '/server:10731',
