@@ -188,6 +188,11 @@ AddEventHandler('onResourceStart', function(resource)
 
     storage.createUsersTable()
     storage.ensureGeneratedColumns()
+    storage.ensurePositionColumns()
+    storage.ensureAccountsTable()
+    storage.ensureCharinfoColumns()
+    storage.ensurePrimaryGroupColumn()
+    storage.ensureMetadataColumns()
 
     MySQL.query([[
         ALTER TABLE `players`

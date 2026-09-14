@@ -141,11 +141,34 @@
 
 ---@class PlayerEntityDatabase : PlayerEntity
 ---@field charinfo string
+---@field first_name string?
+---@field last_name string?
+---@field birthdate string?
+---@field nationality string?
+---@field gender number?
+---@field backstory string?
+---@field phone string?
+---@field account_number string?
+---@field card_number number?
 ---@field money string
+---@field accountsMoney string? JSON_OBJECTAGG(account_type, balance) from character_accounts, NULL if not migrated yet
 ---@field job? string
 ---@field gang? string
+---@field primaryJob string? JSON_OBJECT('group', ..., 'grade', ...) from player_groups, NULL if on the default job or not migrated
+---@field primaryGang string? same as primaryJob, for gang
 ---@field position string
+---@field pos_x number?
+---@field pos_y number?
+---@field pos_z number?
+---@field pos_heading number?
 ---@field metadata string
+---@field health number? write-side only, see ensureMetadataColumns — reads still come from `metadata`
+---@field armor number?
+---@field hunger number?
+---@field thirst number?
+---@field stress number?
+---@field isdead boolean?
+---@field injail number?
 ---@field lastLoggedOutUnix integer
 
 ---@class PlayerCharInfo
