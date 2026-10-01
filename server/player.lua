@@ -743,11 +743,11 @@ function Logout(source)
     player.PlayerData.metadata.thirst = playerState?.thirst or player.PlayerData.metadata.thirst
     player.PlayerData.metadata.stress = playerState?.stress or player.PlayerData.metadata.stress
 
-    TriggerClientEvent('QBCore:Client:OnPlayerUnload', source)
-    TriggerEvent('QBCore:Server:OnPlayerUnload', source)
-
     player.PlayerData.lastLoggedOut = os.time()
     Save(player.PlayerData.source)
+
+    TriggerClientEvent('QBCore:Client:OnPlayerUnload', source)
+    TriggerEvent('QBCore:Server:OnPlayerUnload', source)
 
     Wait(200)
     QBX.UnregisterPlayer(source)
@@ -967,90 +967,6 @@ function CreatePlayer(playerData, Offline)
         Logout(self.PlayerData.source)
     end
 
-    AddEventHandler('qbx_core:server:onJobUpdate', function(jobName, job)
-        if self.PlayerData.job.name ~= jobName then return end
-
-        if not job then
-            self.PlayerData.job = {
-                name = 'unemployed',
-                label = 'Civilian',
-                isboss = false,
-                bankAuth = false,
-                onduty = true,
-                payment = 10,
-                grade = {
-                    name = 'Freelancer',
-                    level = 0,
-                }
-            }
-        else
-            self.PlayerData.job.label = job.label
-            self.PlayerData.job.type = job.type or 'none'
-
-            local jobGrade = job.grades[self.PlayerData.job.grade.level]
-
-            if jobGrade then
-                self.PlayerData.job.grade.name = jobGrade.name
-                self.PlayerData.job.payment = jobGrade.payment or 30
-                self.PlayerData.job.isboss = jobGrade.isboss or false
-                self.PlayerData.job.bankAuth = jobGrade.bankAuth or false
-            else
-                self.PlayerData.job.grade = {
-                    name = 'No Grades',
-                    level = 0,
-                    payment = 30,
-                    isboss = false,
-                }
-            end
-        end
-
-        if not self.Offline then
-            UpdatePlayerData(self.PlayerData.source)
-            TriggerEvent('QBCore:Server:OnJobUpdate', self.PlayerData.source, self.PlayerData.job)
-            TriggerClientEvent('QBCore:Client:OnJobUpdate', self.PlayerData.source, self.PlayerData.job)
-        end
-    end)
-
-    AddEventHandler('qbx_core:server:onGangUpdate', function(gangName, gang)
-        if self.PlayerData.gang.name ~= gangName then return end
-
-        if not gang then
-            self.PlayerData.gang = {
-                name = 'none',
-                label = 'No Gang Affiliation',
-                isboss = false,
-                bankAuth = false,
-                grade = {
-                    name = 'none',
-                    level = 0
-                }
-            }
-        else
-            self.PlayerData.gang.label = gang.label
-
-            local gangGrade = gang.grades[self.PlayerData.gang.grade.level]
-
-            if gangGrade then
-                self.PlayerData.gang.grade.name = gangGrade.name
-                self.PlayerData.gang.isboss = gangGrade.isboss or false
-                self.PlayerData.gang.bankAuth = gangGrade.bankAuth or false
-            else
-                self.PlayerData.gang.grade = {
-                    name = 'No Grades',
-                    level = 0,
-                }
-                self.PlayerData.gang.isboss = false
-                self.PlayerData.gang.bankAuth = false
-            end
-        end
-
-        if not self.Offline then
-            UpdatePlayerData(self.PlayerData.source)
-            TriggerEvent('QBCore:Server:OnGangUpdate', self.PlayerData.source, self.PlayerData.gang)
-            TriggerClientEvent('QBCore:Client:OnGangUpdate', self.PlayerData.source, self.PlayerData.gang)
-        end
-    end)
-
     if not self.Offline then
         QBX.Players[self.PlayerData.source] = self
         QBX.RegisterPlayer(self)
@@ -1074,6 +990,92 @@ end
 
 exports('CreatePlayer', CreatePlayer)
 
+AddEventHandler('qbx_core:server:onJobUpdate', function(jobName, job)
+    for src, player in pairs(QBX.Players) do
+        local playerData = player.PlayerData
+        if playerData.job.name == jobName then
+            if not job then
+                playerData.job = {
+                    name = 'unemployed',
+                    label = 'Civilian',
+                    isboss = false,
+                    bankAuth = false,
+                    onduty = true,
+                    payment = 10,
+                    grade = {
+                        name = 'Freelancer',
+                        level = 0,
+                    }
+                }
+            else
+                playerData.job.label = job.label
+                playerData.job.type = job.type or 'none'
+
+                local jobGrade = job.grades[playerData.job.grade.level]
+
+                if jobGrade then
+                    playerData.job.grade.name = jobGrade.name
+                    playerData.job.payment = jobGrade.payment or 30
+                    playerData.job.isboss = jobGrade.isboss or false
+                    playerData.job.bankAuth = jobGrade.bankAuth or false
+                else
+                    playerData.job.grade = {
+                        name = 'No Grades',
+                        level = 0,
+                        payment = 30,
+                        isboss = false,
+                    }
+                end
+            end
+
+            UpdatePlayerData(src)
+            TriggerEvent('QBCore:Server:OnJobUpdate', src, playerData.job)
+            TriggerClientEvent('QBCore:Client:OnJobUpdate', src, playerData.job)
+        end
+    end
+end)
+
+AddEventHandler('qbx_core:server:onGangUpdate', function(gangName, gang)
+    for src, player in pairs(QBX.Players) do
+        local playerData = player.PlayerData
+        if playerData.gang.name == gangName then
+            if not gang then
+                playerData.gang = {
+                    name = 'none',
+                    label = 'No Gang Affiliation',
+                    isboss = false,
+                    bankAuth = false,
+                    grade = {
+                        name = 'none',
+                        level = 0
+                    }
+                }
+            else
+                playerData.gang.label = gang.label
+
+                local gangGrade = gang.grades[playerData.gang.grade.level]
+
+                if gangGrade then
+                    playerData.gang.grade.name = gangGrade.name
+                    playerData.gang.isboss = gangGrade.isboss or false
+                    playerData.gang.bankAuth = gangGrade.bankAuth or false
+                else
+                    playerData.gang.grade = {
+                        name = 'No Grades',
+                        level = 0,
+                    }
+                    playerData.gang.isboss = false
+                    playerData.gang.bankAuth = false
+                end
+            end
+
+            UpdatePlayerData(src)
+            TriggerEvent('QBCore:Server:OnGangUpdate', src, playerData.gang)
+            TriggerClientEvent('QBCore:Client:OnGangUpdate', src, playerData.gang)
+        end
+    end
+end)
+
 ---Save player info to database (make sure citizenid is the primary key in your database)
 ---@param source Source
 function Save(source)
@@ -1081,7 +1083,7 @@ function Save(source)
     local playerData = QBX.Players[source].PlayerData
     local playerState = Player(source)?.state
     local pcoords = playerData.position
-    if not playerState.inApartment and not playerState.inProperty then
+    if playerState.isLoggedIn and not playerState.inApartment and not playerState.inProperty then
         local coords = GetEntityCoords(ped)
         pcoords = vec4(coords.x, coords.y, coords.z, GetEntityHeading(ped))
     end
@@ -1090,10 +1092,11 @@ function Save(source)
         return
     end
 
-    playerData.metadata.health = GetEntityHealth(ped)
-    playerData.metadata.armor = GetPedArmour(ped)
-
     if playerState.isLoggedIn then
+        -- Before spawn the ped is only a character-select preview (see the position guard
+        -- above too), so reading it would overwrite saved vitals if the player drops first.
+        playerData.metadata.health = GetEntityHealth(ped)
+        playerData.metadata.armor = GetPedArmour(ped)
         playerData.metadata.hunger = playerState.hunger or 0
         playerData.metadata.thirst = playerState.thirst or 0
         playerData.metadata.stress = playerState.stress or 0

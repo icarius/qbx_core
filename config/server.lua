@@ -98,7 +98,7 @@ return {
         },
 
         defaultNumberOfCharacters = 3, -- Define maximum amount of default characters (maximum 3 characters defined by default)
-        enableHealthInitialization = true, -- Sets the player's health/armor from saved metadata once spawn is confirmed. Disable if a dedicated spawn resource already handles this.
+        enableHealthInitialization = true, -- Sets the player's health from saved metadata once spawn is confirmed, unless qbx_medical is running. Disable if another medical/spawn resource handles this.
     },
 
     -- this configuration is for core events only. putting other webhooks here will have no effect

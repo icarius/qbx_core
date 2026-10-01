@@ -208,11 +208,14 @@ RegisterNetEvent('QBCore:Server:OnPlayerLoaded', function()
     local player = QBX.Players[src]
     -- Guards against this event arriving before CreatePlayer has registered the player
     -- (e.g. a stray/duplicate client trigger), which would otherwise error on state:set below.
-    if not player then return end
+    -- A duplicate trigger would re-apply stale saved health over the live ped and re-fire PlayerLoaded.
+    if not player or Player(src).state.isLoggedIn then return end
 
     Player(src).state:set('isLoggedIn', true, true)
 
-    if characterConfig.enableHealthInitialization then
+    -- qbx_medical restores health together with death/laststand state; overriding it here
+    -- could clobber a ped it has just resurrected.
+    if characterConfig.enableHealthInitialization and GetResourceState('qbx_medical') ~= 'started' then
         -- Moved here (out of CreatePlayer) so a 0 health value saved from a previous session
         -- doesn't spawn the player dead during character selection, before any medical/spawn
         -- resource has had a chance to revive them.

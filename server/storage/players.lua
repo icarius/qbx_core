@@ -774,6 +774,9 @@ local function deletePlayer(citizenId)
     end
 
     local success = MySQL.transaction.await(queries)
+    if success then
+        TriggerEvent('qbx_core:server:characterDeleted', citizenId)
+    end
     return not not success
 end
 
