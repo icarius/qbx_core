@@ -4,7 +4,7 @@ game 'gta5'
 name 'qbx_core'
 description 'The core resource for the Qbox Framework'
 repository 'https://github.com/Qbox-project/qbx_core'
-version '1.24.0'
+version '1.24.1'
 
 ox_lib 'locale'
 
@@ -39,6 +39,7 @@ server_scripts {
     'server/loops.lua',
     'server/character.lua',
     'server/vehicle-persistence.lua',
+    'server/convert/inventory.lua',
     'bridge/qb/server/main.lua',
 }
 

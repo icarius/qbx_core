@@ -23,19 +23,83 @@ functions.GetCoords = function(entity) -- luacheck: ignore
     return vec4(coords.x, coords.y, coords.z, GetEntityHeading(entity))
 end
 
----@deprecated use https://coxdocs.dev/ox_inventory/Functions/Client#search
+---@param itemName any
+---@return number
+local function getItemCount(itemName)
+    if type(itemName) ~= 'string' then return 0 end
+    itemName = itemName:lower()
+    if itemName:sub(1, 7) == 'weapon_' then itemName = itemName:upper() end
+    return exports.ox_inventory:GetItemCount(itemName) or 0
+end
+
+---@deprecated use https://coxdocs.dev/ox_inventory/Functions/Client#getitemcount
+---@param items string | string[] | table<string, number>
+---@param amount? number
+---@return boolean
 functions.HasItem = function(items, amount)
-    amount = amount or 1
-    local count = exports.ox_inventory:Search('count', items)
-    if type(items) == 'table' and type(count) == 'table' then
-        for _, v in pairs(count) do
-            if v < amount then
-                return false
-            end
-        end
-        return true
+    if type(items) ~= 'table' then
+        return getItemCount(items) >= (amount or 1)
     end
-    return count >= amount
+
+    if next(items) == nil then return false end
+
+    local isArray = table.type(items) == 'array'
+    for key, value in pairs(items) do
+        local required = amount or (not isArray and tonumber(value)) or 1
+        if getItemCount(isArray and value or key) < required then
+            return false
+        end
+    end
+    return true
+end
+
+---@deprecated import PlayerData using module 'qbx_core:playerdata' https://docs.qbox.re/resources/qbx_core/modules/playerdata
+---@return string?
+functions.GetName = function()
+    local charinfo = QBX.PlayerData.charinfo
+    if not charinfo then return end
+    return ('%s %s'):format(charinfo.firstname, charinfo.lastname)
+end
+
+---@deprecated use the GetHeadingFromVector_2d and SetEntityHeading natives directly
+---@param entity number
+---@param timeout number
+---@param speed number
+---@return string? error
+functions.LookAtEntity = function(entity, timeout, speed)
+    local invoked = GetInvokingResource() or cache.resource
+    if type(entity) ~= 'number' then
+        return invoked .. ' :^1  Entity must be a number'
+    end
+    if not DoesEntityExist(entity) then
+        return invoked .. ' :^1  Entity does not exist'
+    end
+    if type(speed) ~= 'number' then
+        return invoked .. ' :^1  Speed must be a number'
+    end
+    speed = math.min(speed, 5.0)
+    timeout = math.min(timeout or 5000, 5000)
+
+    local ped = cache.ped
+    local playerPos = GetEntityCoords(ped)
+    local targetPos = GetEntityCoords(entity)
+    local targetHeading = GetHeadingFromVector_2d(targetPos.x - playerPos.x, targetPos.y - playerPos.y)
+    local endTime = GetGameTimer() + timeout
+    while true do
+        local currentHeading = GetEntityHeading(ped)
+        local diff = targetHeading - currentHeading
+        if math.abs(diff) < 2 then break end
+        if diff < -180 then
+            diff += 360
+        elseif diff > 180 then
+            diff -= 360
+        end
+        local turnSpeed = speed + (2.5 - speed) * (1 - math.abs(diff) / 180)
+        SetEntityHeading(ped, diff > 0 and currentHeading + turnSpeed or currentHeading - turnSpeed)
+        Wait(0)
+        if GetGameTimer() > endTime then break end
+    end
+    SetEntityHeading(ped, targetHeading)
 end
 
 -- Utility
@@ -67,11 +131,37 @@ end
 ---@deprecated use lib.requestAnimDict from ox_lib
 functions.RequestAnimDict = lib.requestAnimDict
 
----@deprecated use lib.requestAnimDict from ox_lib, and the TaskPlayAnim and RemoveAnimDict natives directly
+---@deprecated use lib.playAnim from ox_lib
+---@param animDict string
+---@param animName string
+---@param upperbodyOnly? boolean
+---@param duration? number ms, -1 or nil loops the animation
+---@return number | string durationOrError animation length in seconds once it has played, or an error message
 functions.PlayAnim = function(animDict, animName, upperbodyOnly, duration)
-    local flags = upperbodyOnly and 16 or 0
+    local invoked = GetInvokingResource() or cache.resource
+    if type(animDict) ~= 'string' or type(animName) ~= 'string' then
+        return invoked .. ' :^1  Wrong type for animDict or animName'
+    end
+    if not DoesAnimDictExist(animDict) then
+        return invoked .. ' :^1  Animation dictionary does not exist'
+    end
+    if not pcall(lib.requestAnimDict, animDict, 5000) then
+        return invoked .. ' :^1  Animation dictionary failed to load'
+    end
+
     local runTime = duration or -1
-    lib.playAnim(cache.ped, animDict, animName, 8.0, 3.0, runTime, flags, 0.0, false, false, true)
+    local flags = runTime == -1 and 49 or upperbodyOnly and 16 or 0
+    TaskPlayAnim(cache.ped, animDict, animName, 8.0, 8.0, runTime, flags, 0.0, true, true, true)
+    Wait(10)
+    local animDuration = GetAnimDuration(animDict, animName)
+    if animDuration == 0 then
+        return invoked .. ' :^1  Animation does not exist'
+    end
+
+    local fullDuration = animDuration * 1000
+    Wait(duration and math.min(duration, fullDuration) or fullDuration)
+    RemoveAnimDict(animDict)
+    return animDuration
 end
 
 ---@deprecated use lib.requestModel from ox_lib
@@ -80,69 +170,100 @@ functions.LoadModel = lib.requestModel
 ---@deprecated use lib.requestAnimSet from ox_lib
 functions.LoadAnimSet = lib.requestAnimSet
 
+---@alias QbProgressProp {model: string, bone?: number, coords?: vector3|table, rotation?: vector3|table}
+
+---@param value? vector3|table
+---@return vector3
+local function toVec3(value)
+    return value and vec3(value.x, value.y, value.z) or vec3(0.0, 0.0, 0.0)
+end
+
+---@param prop? QbProgressProp
+---@return ProgressPropProps?
+local function toProgressProp(prop)
+    if not prop?.model then return end
+    return {
+        model = prop.model,
+        bone = prop.bone,
+        pos = toVec3(prop.coords),
+        rot = toVec3(prop.rotation),
+    }
+end
+
+---@param animation? {animDict?: string, anim?: string, flags?: integer, task?: string}
+---@return table?
+local function toProgressAnim(animation)
+    if not animation then return end
+    if animation.task then
+        return { scenario = animation.task }
+    end
+    if animation.animDict and animation.anim then
+        return {
+            dict = animation.animDict,
+            clip = animation.anim,
+            flag = animation.flags or 1,
+            blendIn = 3.0,
+            blendOut = 3.0,
+        }
+    end
+end
+
+local isProgressbarRunning = false
+
+---Returns immediately like QBCore's; onFinish or onCancel runs when the bar ends.
 ---@deprecated use lib.progressBar from ox_lib
 ---@param label string
 ---@param duration integer ms
 ---@param useWhileDead boolean
 ---@param canCancel boolean
 ---@param disableControls? {disableMovement: boolean, disableCarMovement: boolean, disableCombat: boolean, disableMouse: boolean}
----@param animation? {animDict: string, anim: string, flags: unknown}
----@param prop? {model: string, bone?: number, coords?: vector3|table, rotation?: vector3|table}
----@param propTwo? {model: string, bone?: number, coords?: vector3|table, rotation?: vector3|table}
----@param onFinish fun()
----@param onCancel fun()
+---@param animation? {animDict?: string, anim?: string, flags?: integer, task?: string}
+---@param prop? QbProgressProp
+---@param propTwo? QbProgressProp
+---@param onFinish? fun()
+---@param onCancel? fun()
 function functions.Progressbar(_, label, duration, useWhileDead, canCancel, disableControls, animation, prop, propTwo, onFinish, onCancel)
-    local props
+    if isProgressbarRunning or lib.progressActive() then return end
+    if not useWhileDead and IsEntityDead(cache.ped) then return end
 
-    if prop?.model then
-        local propData = {
-            model = prop.model,
-            bone = prop.bone,
-            pos = prop.coords,
-            rot = prop.rotation,
-        }
+    local props = {}
+    props[#props + 1] = toProgressProp(prop)
+    props[#props + 1] = toProgressProp(propTwo)
 
-        if propTwo?.model then
-            props = {
-                propData,
-                {
-                    model = propTwo.model,
-                    bone = propTwo.bone,
-                    pos = propTwo.coords,
-                    rot = propTwo.rotation,
-                },
-            }
-        else
-            props = propData
+    isProgressbarRunning = true
+    CreateThread(function()
+        local ok, completed = pcall(lib.progressBar, {
+            duration = duration,
+            label = label,
+            useWhileDead = useWhileDead,
+            allowRagdoll = true,
+            allowCuffed = true,
+            allowFalling = true,
+            allowSwimming = true,
+            canCancel = canCancel,
+            disable = disableControls and {
+                move = disableControls.disableMovement,
+                car = disableControls.disableCarMovement,
+                combat = disableControls.disableCombat,
+                mouse = disableControls.disableMouse,
+            },
+            anim = toProgressAnim(animation),
+            prop = props[1] and props,
+        })
+        isProgressbarRunning = false
+
+        if not ok then
+            lib.print.error(completed)
         end
-    end
 
-    if lib.progressBar({
-        duration = duration,
-        label = label,
-        useWhileDead = useWhileDead,
-        canCancel = canCancel,
-        disable = {
-            move = disableControls?.disableMovement,
-            car = disableControls?.disableCarMovement,
-            combat = disableControls?.disableCombat,
-            mouse = disableControls?.disableMouse,
-        },
-        anim = {
-            dict = animation?.animDict,
-            clip = animation?.anim,
-            flag = animation?.flags
-        },
-        prop = props,
-    }) then
-        if onFinish then
-            onFinish()
-        end
-    else
-        if onCancel then
+        if ok and completed then
+            if onFinish then
+                onFinish()
+            end
+        elseif onCancel then
             onCancel()
         end
-    end
+    end)
 end
 
 -- Getters
@@ -374,7 +495,7 @@ function functions.GetVehicleProperties(vehicle)
 
     local doorStatus = {}
     for i = 0, 5 do
-        doorStatus[i] = IsVehicleDoorDamaged(vehicle, i) == 1
+        doorStatus[i] = IsVehicleDoorDamaged(vehicle, i)
     end
 
     -- qb properties not in ox
@@ -391,6 +512,10 @@ function functions.GetVehicleProperties(vehicle)
     props.modKit49 = props.modLightbar
     props.liveryRoof = props.modRoofLivery
 
+    if props.modLivery == -1 and GetVehicleLivery(vehicle) ~= 0 then
+        props.modLivery = GetVehicleLivery(vehicle)
+    end
+
     return props
 end
 
@@ -398,9 +523,11 @@ local gameBuild = GetGameBuildNumber()
 
 ---@deprecated use lib.setVehicleProperties from ox_lib
 function functions.SetVehicleProperties(vehicle, props)
+    if not props or not DoesEntityExist(vehicle) then return end
+
     if props.tireHealth and not props.tyres then
         for wheelIndex, health in pairs(props.tireHealth) do
-            SetVehicleWheelHealth(vehicle, wheelIndex, health)
+            SetVehicleWheelHealth(vehicle, tonumber(wheelIndex) --[[@as number]], health)
         end
     end
     if props.headlightColor then
@@ -410,17 +537,29 @@ function functions.SetVehicleProperties(vehicle, props)
     if (props.tireBurstCompletely or props.tireBurstState) and not props.tyres then
         props.tyres = {}
         for i = 0, 7 do
-            props.tyres[i] = props.tireBurstCompletely and props.tireBurstCompletely[i] and 2 or props.tireBurstState and props.tireBurstState[i] and 1 or nil
+            local completely = props.tireBurstCompletely and (props.tireBurstCompletely[i] or props.tireBurstCompletely[tostring(i)])
+            local burst = props.tireBurstState and (props.tireBurstState[i] or props.tireBurstState[tostring(i)])
+            props.tyres[i] = completely and 2 or burst and 1 or nil
         end
     end
 
     local numWindowsDamaged = 0
     if props.windowStatus and not props.windows then
         props.windows = {}
-        for i, isDamaged in pairs(props.windowStatus) do
-            if isDamaged then
-                numWindowsDamaged += 1
-                props.windows[numWindowsDamaged] = i
+        -- QBCore's getter compares a boolean native to 1, so its saved windowStatus is all false; only trust data with an intact window
+        local hasIntactWindow = false
+        for _, isIntact in pairs(props.windowStatus) do
+            if isIntact then
+                hasIntactWindow = true
+                break
+            end
+        end
+        if hasIntactWindow then
+            for i, isIntact in pairs(props.windowStatus) do
+                if not isIntact then
+                    numWindowsDamaged += 1
+                    props.windows[numWindowsDamaged] = tonumber(i)
+                end
             end
         end
     end
@@ -431,7 +570,7 @@ function functions.SetVehicleProperties(vehicle, props)
         for i, isDamaged in pairs(props.doorStatus) do
             if isDamaged then
                 numDoorsDamaged += 1
-                props.doors[numDoorsDamaged] = i
+                props.doors[numDoorsDamaged] = tonumber(i)
             end
         end
     end
@@ -444,7 +583,8 @@ function functions.SetVehicleProperties(vehicle, props)
     props.modLightbar = props.modLightbar or props.modKit49
     props.modRoofLivery = props.modRoofLivery or props.liveryRoof
 
-    --- lib.setVehicleProperties copied and pasted from Overextended below so that we can remove the error so that setting properties is best effort
+    -- Adapted from ox_lib with its errors removed so setting properties is best effort: https://github.com/overextended/ox_lib/blob/dda2e0927fec2aeb0f5f12fc88c0f614796c043f/resource/vehicleProperties/client.lua#L288-L647
+    -- Copyright (C) 2021-2023 Linden, Luke, and contributors, LGPL-3.0-or-later (see LICENSES/LGPL-3.0-or-later.txt)
     assert(DoesEntityExist(vehicle), ('Unable to set vehicle properties for "%s" (entity does not exist)'):format(vehicle))
 
     if NetworkGetEntityIsNetworked(vehicle) and NetworkGetEntityOwner(vehicle) ~= cache.playerId then
@@ -459,7 +599,7 @@ function functions.SetVehicleProperties(vehicle, props)
 
     if props.extras then
         for id, disable in pairs(props.extras) do
-            SetVehicleExtra(vehicle, tonumber(id) --[[@as number]], disable == 1)
+            SetVehicleExtra(vehicle, tonumber(id) --[[@as number]], disable == 1 or disable == false)
         end
     end
 
@@ -669,7 +809,9 @@ function functions.SetVehicleProperties(vehicle, props)
         ToggleVehicleMod(vehicle, 22, props.modXenon)
     end
 
-    if props.xenonColor then
+    if type(props.xenonColor) == 'table' then
+        SetVehicleXenonLightsCustomColor(vehicle, props.xenonColor[1], props.xenonColor[2], props.xenonColor[3])
+    elseif props.xenonColor then
         SetVehicleXenonLightsColor(vehicle, props.xenonColor)
     end
 
@@ -879,7 +1021,7 @@ functions.GetZoneAtCoords = qbx.getZoneName
 ---@deprecated use qbx.getCardinalDirection from modules/lib.lua
 functions.GetCardinalDirection = function(entity)
     if not entity or not DoesEntityExist(entity) then
-        return 'Cardinal Direction Error'
+        entity = cache.ped
     end
 
     return qbx.getCardinalDirection(entity)
@@ -923,6 +1065,26 @@ functions.GetGroundZCoord = function(coords)
 
     lib.print.verbose('Couldn\'t find Ground Z Coordinates given 3D Coordinates:', coords)
     return coords
+end
+
+---@deprecated use the StartShapeTestCapsule and GetShapeTestResultEx natives directly
+---@param entity number
+---@return number materialHash
+---@return number entityHit
+---@return vector3 surfaceNormal
+---@return vector3 endCoords
+---@return boolean success
+---@return number status
+functions.GetGroundHash = function(entity)
+    local coords = GetEntityCoords(entity)
+    local handle = StartShapeTestCapsule(coords.x, coords.y, coords.z + 4, coords.x, coords.y, coords.z - 2.0, 1, 1, entity, 7)
+    local status, success, endCoords, surfaceNormal, materialHash, entityHit
+    while true do
+        status, success, endCoords, surfaceNormal, materialHash, entityHit = GetShapeTestResultEx(handle)
+        if status ~= 1 then break end
+        Wait(0)
+    end
+    return materialHash, entityHit, surfaceNormal, endCoords, success, status
 end
 
 ---Text box popup for player which dissappears after a set time.
