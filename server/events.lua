@@ -81,6 +81,8 @@ end
 local function onPlayerConnecting(name, _, deferrals)
     local src = source --[[@as string]]
     local license = GetPlayerIdentifierByType(src, 'license2') or GetPlayerIdentifierByType(src, 'license')
+    local identifiers = getIdentifiers(src)
+    identifiers.username = name
     deferrals.defer()
 
     -- Mandatory wait
@@ -100,13 +102,6 @@ local function onPlayerConnecting(name, _, deferrals)
         deferrals.done(locale('error.duplicate_license'))
         return
     end
-
-    -- Captured now, synchronously, while src is still guaranteed valid. Reading identifiers
-    -- after the database await below is unsafe: another resource's deferral can reject the
-    -- connection while we're waiting on the DB, leaving src invalid and getIdentifiers(src)
-    -- returning nothing but the username, which would insert an identifier-less users row.
-    local identifiers = getIdentifiers(src)
-    identifiers.username = name
 
     local databaseTime = os.clock()
     local databasePromise = promise.new()
@@ -206,27 +201,18 @@ end)
 -- `if Player(source).state.isLoggedIn then` for the server side
 RegisterNetEvent('QBCore:Server:OnPlayerLoaded', function()
     local src = source --[[@as Source]]
-    local player = QBX.Players[src]
-    -- Guards against this event arriving before CreatePlayer has registered the player
-    -- (e.g. a stray/duplicate client trigger), which would otherwise error on state:set below.
-    -- A duplicate trigger would re-apply stale saved health over the live ped and re-fire PlayerLoaded.
+    local player = GetPlayer(src)
     if not player or Player(src).state.isLoggedIn then return end
 
     Player(src).state:set('isLoggedIn', true, true)
 
-    -- qbx_medical restores health together with death/laststand state; overriding it here
-    -- could clobber a ped it has just resurrected.
-    if characterConfig.enableHealthInitialization and GetResourceState('qbx_medical') ~= 'started' then
-        -- Moved here (out of CreatePlayer) so a 0 health value saved from a previous session
-        -- doesn't spawn the player dead during character selection, before any medical/spawn
-        -- resource has had a chance to revive them.
+    -- qbx_medical restores health and death/laststand together. A late callback
+    -- from core must not overwrite its resurrected ped's health.
+    if characterConfig.enableHealthInitialization ~= false and GetResourceState('qbx_medical') ~= 'started' then
         lib.callback.await('qbx_core:client:setHealth', src, player.PlayerData.metadata.health or 200)
     end
 
-    -- Fired here, rather than from CreatePlayer, because this event only arrives once the
-    -- client has moved the ped to its final spawn location. Third-party handlers (e.g.
-    -- qbx_medical's metadata updates, which trigger Save()) rely on the ped position being
-    -- accurate by the time they receive PlayerLoaded.
+    -- Fired here rather than in CreatePlayer so handlers that Save() see the final spawn position.
     TriggerEvent('QBCore:Server:PlayerLoaded', player)
 end)
 

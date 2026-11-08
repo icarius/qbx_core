@@ -1082,18 +1082,11 @@ function CreatePlayer(playerData, Offline)
         QBX.Players[self.PlayerData.source] = self
         QBX.RegisterPlayer(self)
         local ped = GetPlayerPed(self.PlayerData.source)
-        -- Health is initialized later, from QBCore:Server:OnPlayerLoaded in server/events.lua,
-        -- once the client confirms the ped exists at its final spawn location. Setting it here
-        -- unconditionally could spawn the player dead during character selection if their
-        -- saved health metadata is 0.
         SetPedArmour(ped, self.PlayerData.metadata.armor)
         GlobalState.PlayerCount += 1
         UpdatePlayerData(self.PlayerData.source)
         Player(self.PlayerData.source).state:set('loadInventory', true, true)
-        -- QBCore:Server:PlayerLoaded is emitted later too, once the client confirms the ped is
-        -- at its final spawn location (see QBCore:Server:OnPlayerLoaded in server/events.lua).
-        -- Firing it here would let handlers (e.g. metadata-driven Save() calls) persist the
-        -- player's position while the ped is still at the hidden multichar/character-select spot.
+        -- Health init and QBCore:Server:PlayerLoaded happen in QBCore:Server:OnPlayerLoaded (server/events.lua).
     end
 
     return self
@@ -1204,8 +1197,8 @@ function Save(source)
     end
 
     if playerState.isLoggedIn then
-        -- Before spawn the ped is only a character-select preview (see the position guard
-        -- above too), so reading it would overwrite saved vitals if the player drops first.
+        -- Before spawning, this ped is only a preview and does not have the
+        -- character's saved health. Keep stored vitals if selection is aborted.
         playerData.metadata.health = GetEntityHealth(ped)
         playerData.metadata.armor = GetPedArmour(ped)
         playerData.metadata.hunger = playerState.hunger or 0

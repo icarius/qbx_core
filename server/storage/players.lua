@@ -331,6 +331,9 @@ end
 ---replaces (see ensureAccountsTable's header for why this can't be fixed columns).
 ---@param citizenid string
 ---@param money table<string, number>
+---@type table<string, { money: string, job: string?, gang: string? }>
+local lastSavedRelations = {}
+
 local function upsertAccounts(citizenid, money)
     local placeholders = {}
     local values = {}
@@ -424,32 +427,32 @@ local function upsertPlayerEntity(request)
         last_logged_out = os.date('%Y-%m-%d %H:%M:%S', request.playerEntity.lastLoggedOut)
     }
 
-    -- Existence is checked explicitly rather than relying on `INSERT ... ON DUPLICATE KEY UPDATE`,
-    -- which burns an AUTO_INCREMENT value on `players.id` for every save, not just new characters.
-    local exists = MySQL.scalar.await('SELECT 1 FROM players WHERE citizenid = ?', { params.citizenid })
-
-    if exists then
-        MySQL.update.await('UPDATE players SET userId = :userId, name = :name, money = :money, charinfo = :charinfo, first_name = :first_name, last_name = :last_name, birthdate = :birthdate, nationality = :nationality, gender = :gender, backstory = :backstory, phone = :phone, account_number = :account_number, card_number = :card_number, job = :job, gang = :gang, position = :position, pos_x = :pos_x, pos_y = :pos_y, pos_z = :pos_z, pos_heading = :pos_heading, metadata = :metadata, health = :health, armor = :armor, hunger = :hunger, thirst = :thirst, stress = :stress, isdead = :isdead, injail = :injail, last_logged_out = :last_logged_out WHERE citizenid = :citizenid', params)
-    else
-        -- character_accounts has a FK on citizenid — the players row has to exist first, so
-        -- upsertAccounts below always runs after this branch either way.
-        MySQL.insert.await('INSERT INTO players (userId, citizenid, cid, license, name, money, charinfo, first_name, last_name, birthdate, nationality, gender, backstory, phone, account_number, card_number, job, gang, position, pos_x, pos_y, pos_z, pos_heading, metadata, health, armor, hunger, thirst, stress, isdead, injail, last_logged_out) VALUES (:userId, :citizenid, :cid, :license, :name, :money, :charinfo, :first_name, :last_name, :birthdate, :nationality, :gender, :backstory, :phone, :account_number, :card_number, :job, :gang, :position, :pos_x, :pos_y, :pos_z, :pos_heading, :metadata, :health, :armor, :hunger, :thirst, :stress, :isdead, :injail, :last_logged_out)', params)
+    -- UPDATE first: `INSERT ... ON DUPLICATE KEY UPDATE` burns an AUTO_INCREMENT id on every save.
+    local affectedRows = MySQL.update.await('UPDATE players SET userId = :userId, name = :name, money = :money, charinfo = :charinfo, first_name = :first_name, last_name = :last_name, birthdate = :birthdate, nationality = :nationality, gender = :gender, backstory = :backstory, phone = :phone, account_number = :account_number, card_number = :card_number, job = :job, gang = :gang, position = :position, pos_x = :pos_x, pos_y = :pos_y, pos_z = :pos_z, pos_heading = :pos_heading, metadata = :metadata, health = :health, armor = :armor, hunger = :hunger, thirst = :thirst, stress = :stress, isdead = :isdead, injail = :injail, last_logged_out = :last_logged_out WHERE citizenid = :citizenid', params)
+    if not affectedRows or affectedRows == 0 then
+        MySQL.insert.await('INSERT INTO players (userId, citizenid, cid, license, name, money, charinfo, first_name, last_name, birthdate, nationality, gender, backstory, phone, account_number, card_number, job, gang, position, pos_x, pos_y, pos_z, pos_heading, metadata, health, armor, hunger, thirst, stress, isdead, injail, last_logged_out) VALUES (:userId, :citizenid, :cid, :license, :name, :money, :charinfo, :first_name, :last_name, :birthdate, :nationality, :gender, :backstory, :phone, :account_number, :card_number, :job, :gang, :position, :pos_x, :pos_y, :pos_z, :pos_heading, :metadata, :health, :armor, :hunger, :thirst, :stress, :isdead, :injail, :last_logged_out) ON DUPLICATE KEY UPDATE userId = :userId, name = :name, money = :money, charinfo = :charinfo, first_name = :first_name, last_name = :last_name, birthdate = :birthdate, nationality = :nationality, gender = :gender, backstory = :backstory, phone = :phone, account_number = :account_number, card_number = :card_number, job = :job, gang = :gang, position = :position, pos_x = :pos_x, pos_y = :pos_y, pos_z = :pos_z, pos_heading = :pos_heading, metadata = :metadata, health = :health, armor = :armor, hunger = :hunger, thirst = :thirst, stress = :stress, isdead = :isdead, injail = :injail, last_logged_out = :last_logged_out', params)
     end
 
-    -- Legacy `money` JSON column (in `params`, above) kept alongside the typed table during
-    -- the migration window — same reasoning as `position`.
-    upsertAccounts(params.citizenid, request.playerEntity.money)
-
-    -- Legacy `job`/`gang` JSON columns (in `params`, above) kept alongside player_groups
-    -- during the migration window — same reasoning as `position`/`money`.
+    -- Saves are frequent (every SetMetadata, hunger/thirst tick) but money/job/gang rarely
+    -- change between them, so their normalized tables are only rewritten when they differ.
+    local citizenid = params.citizenid
+    local last = lastSavedRelations[citizenid] or {}
     local job = request.playerEntity.job
-    if job then
-        upsertPrimaryGroup(params.citizenid, GroupType.JOB, job.name, job.grade.level)
-    end
     local gang = request.playerEntity.gang
-    if gang then
-        upsertPrimaryGroup(params.citizenid, GroupType.GANG, gang.name, gang.grade.level)
+    local jobKey = job and ('%s:%s'):format(job.name, job.grade.level)
+    local gangKey = gang and ('%s:%s'):format(gang.name, gang.grade.level)
+
+    if params.money ~= last.money then
+        upsertAccounts(citizenid, request.playerEntity.money)
     end
+    if jobKey and jobKey ~= last.job then
+        upsertPrimaryGroup(citizenid, GroupType.JOB, job.name, job.grade.level)
+    end
+    if gangKey and gangKey ~= last.gang then
+        upsertPrimaryGroup(citizenid, GroupType.GANG, gang.name, gang.grade.level)
+    end
+
+    lastSavedRelations[citizenid] = { money = params.money, job = jobKey, gang = gangKey }
 end
 
 ---@param citizenId string
@@ -774,6 +777,7 @@ local function deletePlayer(citizenId)
     end
 
     local success = MySQL.transaction.await(queries)
+    lastSavedRelations[citizenId] = nil
     if success then
         TriggerEvent('qbx_core:server:characterDeleted', citizenId)
     end
